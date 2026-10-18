@@ -14,7 +14,7 @@ import type {
   TurnState,
 } from './types';
 
-/** Token mix (120 in total). Per-color split is our best reading of the box; verify. */
+/** Token mix (120 in total), as listed in the rulebook's contents. */
 export const TOKEN_COUNTS: Record<Color, number> = {
   blue: 23,
   gray: 23,
@@ -24,8 +24,18 @@ export const TOKEN_COUNTS: Record<Color, number> = {
   red: 15,
 };
 
+/** Central board spaces / face-up animal cards: 5 with 2–4 players, 3 in solo mode. */
 export const CENTRAL_SLOTS = 5;
 export const RIVER_SIZE = 5;
+export const SOLO_SLOTS = 3;
+
+/** Solo mode: points needed for 1–8 suns (+1 sun when playing side A). */
+export const SUN_THRESHOLDS = [40, 70, 90, 110, 130, 140, 150, 160];
+
+export function sunsFor(total: number, side: Side): number {
+  const base = SUN_THRESHOLDS.filter((t) => total >= t).length;
+  return base + (side === 'A' && base > 0 ? 1 : 0);
+}
 export const MAX_HAND = 4;
 export const TOKENS_PER_SLOT = 3;
 
@@ -45,8 +55,9 @@ export type GameEvent =
   | { type: 'placeToken'; player: number; cell: number; color: Color; pendingIndex: number }
   | { type: 'discardToken'; player: number; color: Color; pendingIndex: number }
   | { type: 'takeCard'; player: number; cardId: string; riverIndex: number }
+  | { type: 'swapCard'; riverIndex: number; discarded: string; cardId: string }
   | { type: 'placeCube'; player: number; cell: number; cardId: string; completed: boolean }
-  | { type: 'refill'; slot: number | null; tokens: Color[] | null; river: (string | null)[] }
+  | { type: 'refill'; slots: number[]; river: (string | null)[] }
   | { type: 'endTriggered'; player: number; reason: 'bag' | 'board' }
   | { type: 'nextTurn'; player: number }
   | { type: 'gameOver'; scores: ScoreBreakdown[]; winners: number[] };
@@ -60,12 +71,14 @@ export function emptyBoard(): Board {
 export class Game {
   readonly side: Side;
   readonly players: PlayerState[];
+  readonly solo: boolean;
+  readonly slots: number;
   current = 0;
   bag: Color[];
   central: (Color[] | null)[];
   river: (string | null)[];
   deck: string[];
-  turn: TurnState = { takenSlot: null, pending: [], tookCard: false };
+  turn: TurnState = { takenSlot: null, pending: [], tookCard: false, swapped: false };
   endTriggered = false;
   finished = false;
   round = 1;
@@ -77,6 +90,8 @@ export class Game {
     }
     const rng = makeRng(opts.seed ?? Date.now());
     this.side = opts.side ?? 'A';
+    this.solo = opts.players.length === 1;
+    this.slots = this.solo ? SOLO_SLOTS : CENTRAL_SLOTS;
     this.players = opts.players.map((p) => ({
       name: p.name,
       isBot: p.isBot,
@@ -89,12 +104,12 @@ export class Game {
       for (let i = 0; i < n; i++) tokens.push(c);
     }
     this.bag = shuffle(tokens, rng);
-    this.central = Array.from({ length: CENTRAL_SLOTS }, () => this.draw());
+    this.central = Array.from({ length: this.slots }, () => this.draw());
     this.deck = shuffle(
       ANIMALS.map((a) => a.id),
       rng,
     );
-    this.river = Array.from({ length: RIVER_SIZE }, () => this.deck.shift() ?? null);
+    this.river = Array.from({ length: this.slots }, () => this.deck.shift() ?? null);
   }
 
   on(fn: (e: GameEvent) => void): () => void {
@@ -132,7 +147,7 @@ export class Game {
   }
 
   canTakeCard(): boolean {
-    return !this.finished && !this.turn.tookCard && this.player.hand.length < MAX_HAND;
+    return !this.finished && !this.turn.tookCard && !this.turn.swapped && this.player.hand.length < MAX_HAND;
   }
 
   canEndTurn(): boolean {
@@ -198,6 +213,21 @@ export class Game {
     this.emit({ type: 'takeCard', player: this.current, cardId: id, riverIndex });
   }
 
+  /** Solo only: if you took no animal card this turn, replace one face-up card with the top of the deck. */
+  canSwapCard(): boolean {
+    return this.solo && !this.finished && !this.turn.tookCard && !this.turn.swapped && this.deck.length > 0;
+  }
+
+  swapCard(riverIndex: number) {
+    this.assertActive();
+    if (!this.canSwapCard()) throw new GameError('No podés cambiar una carta ahora');
+    const old = this.river[riverIndex];
+    if (!old) throw new GameError('No hay carta ahí');
+    this.river[riverIndex] = this.deck.shift()!;
+    this.turn.swapped = true;
+    this.emit({ type: 'swapCard', riverIndex, discarded: old, cardId: this.river[riverIndex]! });
+  }
+
   placeCube(handIndex: number, cell: number) {
     this.assertActive();
     const h: HandCard | undefined = this.player.hand[handIndex];
@@ -219,16 +249,20 @@ export class Game {
     this.assertActive();
     if (!this.canEndTurn()) throw new GameError('Primero colocá las 3 fichas');
 
-    const slot = this.turn.takenSlot!;
-    const refill = this.draw();
-    this.central[slot] = refill;
-    for (let i = 0; i < RIVER_SIZE; i++) {
+    // Solo: the 6 leftover tokens are discarded and all 3 spaces are refilled.
+    const slots = this.solo ? [0, 1, 2] : [this.turn.takenSlot!];
+    let bagRanOut = false;
+    for (const slot of slots) {
+      this.central[slot] = this.draw();
+      if (this.central[slot] === null) bagRanOut = true;
+    }
+    for (let i = 0; i < this.river.length; i++) {
       if (this.river[i] === null) this.river[i] = this.deck.shift() ?? null;
     }
-    this.emit({ type: 'refill', slot, tokens: refill, river: this.river.slice() });
+    this.emit({ type: 'refill', slots, river: this.river.slice() });
 
     if (!this.endTriggered) {
-      if (refill === null) {
+      if (bagRanOut) {
         this.endTriggered = true;
         this.emit({ type: 'endTriggered', player: this.current, reason: 'bag' });
       } else if (this.emptyCells() <= 2) {
@@ -237,7 +271,7 @@ export class Game {
       }
     }
 
-    this.turn = { takenSlot: null, pending: [], tookCard: false };
+    this.turn = { takenSlot: null, pending: [], tookCard: false, swapped: false };
     const next = (this.current + 1) % this.players.length;
     if (next === 0) {
       if (this.endTriggered || this.central.every((s) => s === null)) {

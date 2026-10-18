@@ -137,3 +137,4 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .final th:first-child, .final td:first-child { text-align: left; }
 .final tr.win td { background: #fff3cf; font-weight: 800; }
 .note { font-size: 12px; opacity: 0.6; }
+.swap { width: 100%; margin-top: -4px; font-size: 12px; padding: 4px; }

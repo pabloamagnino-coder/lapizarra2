@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { animal } from '../src/engine/animals';
 import { botChooseCard, botChooseSlot, botNextCube } from '../src/engine/bot';
-import { emptyBoard, Game } from '../src/engine/game';
+import { emptyBoard, Game, sunsFor } from '../src/engine/game';
 import { CELL_COUNT, cellAt, NEIGHBORS } from '../src/engine/hex';
 import { cubeSpots } from '../src/engine/patterns';
 import { canStack } from '../src/engine/rules';
@@ -90,6 +90,10 @@ describe('scoring', () => {
     put(b, 1, 1, 'blue');
     expect(score(b, 'B').water).toBe(10);
   });
+
+  it('always counts at least one island, empty spaces included', () => {
+    expect(score(emptyBoard(), 'B').water).toBe(5);
+  });
 });
 
 describe('animal patterns', () => {
@@ -132,6 +136,33 @@ describe('game flow', () => {
       const totals = g.players.map((_, i) => g.score(i).total);
       expect(Math.max(...totals)).toBeGreaterThan(20);
     }
+  });
+
+  it('plays the solo mode with 3 spaces and full refills', () => {
+    const g = new Game({ players: [{ name: 'Solo', isBot: true }], seed: 7 });
+    expect(g.central.length).toBe(3);
+    expect(g.river.length).toBe(3);
+    let turns = 0;
+    while (!g.finished && turns++ < 100) {
+      if (turns === 1) {
+        g.swapCard(0);
+        expect(g.canTakeCard()).toBe(false);
+      }
+      const { slot, moves } = botChooseSlot(g);
+      g.takeSlot(slot);
+      for (const m of moves) {
+        if (m.cell === null) g.discardToken(m.pendingIndex);
+        else g.placeToken(m.pendingIndex, m.cell);
+      }
+      if (!g.finished) {
+        g.endTurn();
+        if (!g.finished) expect(g.central.every((s) => s && s.length === 3)).toBe(true);
+      }
+    }
+    expect(g.finished).toBe(true);
+    expect(sunsFor(39, 'A')).toBe(0);
+    expect(sunsFor(130, 'A')).toBe(6);
+    expect(sunsFor(130, 'B')).toBe(5);
   });
 
   it('rejects illegal actions', () => {

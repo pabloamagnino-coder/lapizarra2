@@ -35,22 +35,25 @@ tests/        tests del motor (Vitest)
 El motor está separado del render a propósito: el mismo `Game` se puede correr en un
 servidor para el multijugador online sin reescribir las reglas.
 
-## Reglas implementadas y qué tan seguras son
+## Reglas implementadas
 
-Fuentes: reseñas y resúmenes de terceros, sin el reglamento oficial. Desde el entorno de
-desarrollo no se pudo acceder a boardgamearena.com ni a libellud.com.
+Contrastadas con el reglamento oficial en inglés (`LIBELLUD_HARMONIES_RULES_EN`). El PDF no se
+sube al repo porque es material de Libellud.
 
 | Regla | Estado |
 |---|---|
-| Turno: tomar 3 fichas del centro y colocarlas todas; opcional 1 carta (máx. 4); colocar animales | ✅ coincide en varias fuentes |
-| Apilado: agua y campo solo en vacío; montaña hasta 3; árbol = hojas sobre 0–2 troncos; edificio = rojo sobre gris/marrón/rojo | ✅ casi todo confirmado (el texto exacto de agua y campo no) |
-| Árboles 1/3/7 · Montañas 1/3/7 si tocan otra montaña · Campos 5 por grupo de 2+ · Edificio 5 si toca 3 colores | ✅ |
-| Río (lado A) 0/2/5/8/11/15 y +4 por ficha extra, medido por el camino más corto | ✅ |
-| Islas (lado B): 5 por cada grupo de tierra separado por agua | ⚠️ simplificado; en el juego real el lado B es otro tablero |
-| Fin: la bolsa no alcanza o alguien queda con ≤2 espacios libres; se completa la ronda; empate gana quien puso más animales | ✅ |
-| Fichas por color (23/23/21/19/19/15 = 120) | ⚠️ total confirmado (120), reparto sin verificar |
+| Turno: tomar 3 fichas de un espacio y colocarlas todas; opcional 1 carta (máx. 4 sin completar); animales ilimitados, en cualquier orden y entre fichas | ✅ reglamento |
+| Apilado: nunca debajo, nunca sobre un animal; árbol = verde sobre 0–2 marrones; montaña = 1–3 grises; edificio = rojo sobre gris/marrón/rojo | ✅ reglamento |
+| Patrones: cualquier orientación, alturas exactas, edificio de cualquier base, una ficha puede servir a varios hábitats, el animal colocado no se mueve | ✅ reglamento |
+| Árboles y montañas 1/3/7 (montaña sola = 0) · Campos 5 por grupo de 2+ · Edificio 5 si toca 3 colores distintos (solo ficha superior) | ✅ reglamento |
+| Río (lado A): camino más corto entre extremos, 0/2/5/8/11/15 y +4 por ficha después de la 6ª | ✅ reglas / ⚠️ tabla leída de un gráfico |
+| Islas (lado B): 5 por grupo de espacios separado por agua, vacíos incluidos, mínimo 1 | ✅ reglamento / ⚠️ el lado B del tablero real tiene otra forma |
+| Fichas: 23 azules, 23 grises, 21 marrones, 19 verdes, 19 amarillas, 15 rojas | ✅ reglamento |
+| Fin: bolsa vacía al reponer o ≤2 espacios libres; se completa la ronda; empate → más cubos; si persiste, victoria compartida | ✅ reglamento |
+| Modo solitario: 3 espacios, 3 cartas, se descartan las 6 fichas sobrantes, cambio de carta si no tomaste, soles 40/70/90/110/130/140/150/160 (+1 lado A) | ✅ reglamento |
+| Forma del tablero (23 hexágonos en columnas 5-4-5-4-5) | ⚠️ supuesto, el texto no lo dice |
 | Cartas de animales | 🆕 24 cartas propias, no las 32 oficiales |
-| Cartas de espíritu de la naturaleza, modo solitario oficial | ❌ todavía no |
+| Cartas de espíritu de la naturaleza | ❌ todavía no |
 
 ## Próximos pasos
 

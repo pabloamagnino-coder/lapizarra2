@@ -1,7 +1,7 @@
 import { Sound } from './audio/sound';
 import { animal } from './engine/animals';
 import { botChooseCard, botChooseSlot, botNextCube } from './engine/bot';
-import { Game, GameError, MAX_HAND, type PlayerSetup } from './engine/game';
+import { Game, GameError, MAX_HAND, sunsFor, type PlayerSetup } from './engine/game';
 import type { Color, Side } from './engine/types';
 import { View } from './render/view';
 import { cardHtml } from './ui/cards';
@@ -117,10 +117,10 @@ async function doPlaceCube(handIndex: number, cell: number) {
 
 async function doEndTurn() {
   const g = game!;
-  const slot = g.turn.takenSlot!;
+  const slots = g.solo ? [0, 1, 2] : [g.turn.takenSlot!];
   g.endTurn();
   ui.cubeCard = null;
-  view.refillSlot(slot, g.central[slot]);
+  for (const slot of slots) view.refillSlot(slot, g.central[slot]);
   if (g.finished) {
     refresh();
     await sleep(0.6);
@@ -223,6 +223,17 @@ view.handlers = {
 };
 
 $('#river').addEventListener('click', (e) => {
+  const swap = (e.target as HTMLElement).closest<HTMLElement>('[data-swap]');
+  if (swap) {
+    if (humanTurn()) {
+      void guarded(async () => {
+        game!.swapCard(Number(swap.dataset.swap));
+        sound.card();
+        lastCardTaken = game!.river[Number(swap.dataset.swap)];
+      });
+    }
+    return;
+  }
   const el = (e.target as HTMLElement).closest<HTMLElement>('[data-river]');
   if (!el || !humanTurn()) return;
   const g = game!;
@@ -326,10 +337,12 @@ function refresh() {
   view.setNames(g.players.map((p) => p.name), scores.map((s) => s.total), g.current);
 
   const canTake = myTurn && !ui.busy && g.canTakeCard();
+  const canSwap = myTurn && !ui.busy && g.canSwapCard();
   $('#river').innerHTML = g.river
     .map((id, i) =>
       id
-        ? cardHtml(animal(id), { extraClass: canTake ? 'clickable' : '', data: `data-river="${i}"`, disabled: !canTake })
+        ? cardHtml(animal(id), { extraClass: canTake ? 'clickable' : '', data: `data-river="${i}"`, disabled: !canTake }) +
+          (canSwap ? `<button class="ghost swap" data-swap="${i}" title="Modo solitario: descartá esta carta y reponé del mazo">↻ Cambiar</button>` : '')
         : `<div class="card disabled"><div class="note">${g.deck.length ? 'Se repone al terminar el turno' : 'Mazo vacío'}</div></div>`,
     )
     .join('');
@@ -437,7 +450,7 @@ function showSetup() {
             </div>`,
           )
           .join('')}
-        <p class="note">Varios humanos = se turnan en la misma compu (hot-seat).</p>
+        <p class="note">${count === 1 ? 'Modo solitario oficial: 3 espacios en el centro, se descartan las fichas sobrantes cada turno y tu resultado se mide en soles.' : 'Varios humanos = se turnan en la misma compu (hot-seat).'}</p>
       </div>
       <div class="field"><label>Lado del tablero</label>
         <div class="seg" id="seg-side">
@@ -492,7 +505,7 @@ function showRules(back?: () => void) {
       <ol>
         <li><b>Obligatorio:</b> tomá un grupo de 3 fichas del centro y colocá las 3 en tu tablero.</li>
         <li><b>Opcional (1 vez):</b> tomá una carta de animal (máximo 4 sin completar).</li>
-        <li><b>Opcional:</b> poné animales donde tu paisaje cumpla su patrón (se puede rotar). Nada se apila encima de un animal.</li>
+        <li><b>Opcional:</b> poné animales donde tu paisaje cumpla su patrón (se puede rotar). Nada se apila encima de un animal, y un animal ya colocado se queda aunque después cambie el hábitat.</li>
       </ol>
       <h4>Fichas y puntos</h4>
       <ul>
@@ -504,8 +517,10 @@ function showRules(back?: () => void) {
         <li>🏝️ <b>Islas (lado B)</b>: cada grupo de tierra separado por agua → 5.</li>
         <li>🦊 <b>Animales</b>: el número más alto que destapaste en cada carta.</li>
       </ul>
+      <h4>Modo solitario</h4>
+      <p>El centro tiene 3 espacios y 3 cartas. Al final de cada turno se descartan las 6 fichas que sobran y se reponen los 3 espacios. Si no tomaste carta, podés cambiar una del río. Tu puntaje se convierte en soles (40/70/90/110/130/140/150/160, +1 jugando el lado A).</p>
       <h4>Fin</h4>
-      <p>Cuando la bolsa no alcanza para reponer o alguien queda con 2 o menos espacios libres, se completa la ronda y se cuenta. Empate: gana quien puso más animales.</p>
+      <p>Cuando la bolsa no alcanza para reponer o alguien queda con 2 o menos espacios libres, se completa la ronda y se cuenta. Empate: gana quien puso más animales; si siguen empatados, comparten la victoria.</p>
       <p class="note">Atajos: 1-2-3 elegir ficha · Enter terminar turno · Esc cancelar animal · arrastrá para girar la cámara.</p>
       <div class="foot"><button class="primary" id="btn-close">Entendido</button></div>
     </div>`);
@@ -516,8 +531,20 @@ function showFinal() {
   const g = game!;
   const scores = g.players.map((_, i) => g.score(i));
   const best = Math.max(...scores.map((s) => s.total));
-  const winners = scores.map((s, i) => (s.total === best ? i : -1)).filter((i) => i >= 0);
+  let winners = scores.map((s, i) => (s.total === best ? i : -1)).filter((i) => i >= 0);
+  if (winners.length > 1) {
+    // Tie-break from the rulebook: most animal cubes placed; still tied = shared victory.
+    const most = Math.max(...winners.map((i) => g.cubesPlaced(i)));
+    winners = winners.filter((i) => g.cubesPlaced(i) === most);
+  }
   sound.victory();
+  const suns = g.solo ? sunsFor(scores[0].total, g.side) : 0;
+  const title = g.solo
+    ? `${'☀️'.repeat(suns) || '🌥️'} ${scores[0].total} puntos`
+    : `🏆 ${winners.map((i) => g.players[i].name).join(' y ')} ${winners.length > 1 ? 'comparten la victoria' : 'gana'}`;
+  const sub = g.solo
+    ? `Conseguiste ${suns} sol${suns === 1 ? '' : 'es'}${g.side === 'A' ? ' (incluye +1 por jugar el lado A)' : ''}. Umbrales: 40 · 70 · 90 · 110 · 130 · 140 · 150 · 160.`
+    : 'Así quedaron los paisajes:';
   const rows = g.players
     .map((p, i) => {
       const s = scores[i];
@@ -527,8 +554,8 @@ function showFinal() {
     .join('');
   openModal(`
     <div class="final">
-      <h2>🏆 ${winners.map((i) => g.players[i].name).join(' y ')} ${winners.length > 1 ? 'empatan' : 'gana'}</h2>
-      <p class="sub">Así quedaron los paisajes:</p>
+      <h2>${title}</h2>
+      <p class="sub">${sub}</p>
       <table>
         <tr><th>Jugador</th><th>🌳</th><th>⛰️</th><th>🌾</th><th>🏠</th><th>${g.side === 'A' ? '🏞️' : '🏝️'}</th><th>🦊</th><th>Total</th></tr>
         ${rows}
@@ -550,6 +577,7 @@ function startGame(players: PlayerSetup[], side: Side) {
     view.syncBoard(i, p.board);
     view.syncCreatures(i, p.board);
   });
+  view.setSlotCount(game.slots);
   view.syncMarket(game.central);
   void view.focus(0, true);
   refresh();

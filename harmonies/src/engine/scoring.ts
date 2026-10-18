@@ -98,8 +98,8 @@ export function scoreBoard(
     const rivers = components((i) => top(board[i].stack) === 'blue');
     water = riverPoints(Math.max(0, ...rivers.map(diameter)));
   } else {
-    const isLand = (i: number) => board[i].stack.length > 0 && top(board[i].stack) !== 'blue';
-    water = 5 * components(isLand).length;
+    // Every space (empty ones included) not covered by water belongs to an island; always at least 1.
+    water = 5 * Math.max(1, components((i) => top(board[i].stack) !== 'blue').length);
   }
 
   const animals = cards.reduce((sum, h) => sum + cardPoints(lookup(h.cardId), h.placed), 0);

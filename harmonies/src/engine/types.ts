@@ -84,6 +84,8 @@ export interface TurnState {
   takenSlot: number | null;
   pending: Color[];
   tookCard: boolean;
+  /** Solo mode: already replaced a face-up animal card this turn. */
+  swapped: boolean;
 }
 
 export interface ScoreBreakdown {

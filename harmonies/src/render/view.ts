@@ -290,6 +290,14 @@ export class View {
     for (let i = 0; i < board.length; i++) this.syncCell(player, i, board);
   }
 
+  /** Show only the first n central spaces (3 in solo mode), centered on the plate. */
+  setSlotCount(n: number) {
+    this.slotGroups.forEach((g, i) => {
+      g.visible = i < n;
+      g.position.z = (i - (n - 1) / 2) * 2.2;
+    });
+  }
+
   syncMarket(central: (Color[] | null)[]) {
     central.forEach((tokens, s) => this.setSlot(s, tokens, false));
   }
@@ -542,7 +550,7 @@ export class View {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const targets: THREE.Object3D[] = [...this.slotHits, ...this.tray, ...this.players.flatMap((p) => p.cellHits)];
+    const targets: THREE.Object3D[] = [...this.slotHits.filter((h) => h.parent!.visible), ...this.tray, ...this.players.flatMap((p) => p.cellHits)];
     const hit = this.raycaster.intersectObjects(targets, false)[0];
     return hit?.object;
   }
