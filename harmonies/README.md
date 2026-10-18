@@ -57,7 +57,7 @@ sube al repo porque es material de Libellud.
 
 ## Próximos pasos
 
-1. Validar las reglas con el reglamento oficial del juego físico (el PDF de la caja).
+1. Confirmar con fotos del juego físico la forma de los tableros A/B y la tabla del río.
 2. Pulido: vista previa de la ficha antes de soltarla, deshacer, mejores modelos y música.
 3. Multijugador online: servidor autoritativo por WebSocket que reutilice `src/engine`.
 4. Versión para celular: controles táctiles y layout vertical.
